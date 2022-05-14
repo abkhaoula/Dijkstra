@@ -89,7 +89,6 @@ object GraphSystem extends App {
   implicit val to = Timeout(10 seconds)
   
   val as = ActorSystem("Graph")
-  printMe( )
 
   // Creating the Graph nodes
   val NodeA = as.actorOf(Props[Node], "A")
