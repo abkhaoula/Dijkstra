@@ -7,6 +7,8 @@ import scala.concurrent.duration._
 import akka.util.Timeout
 
 
+
+
 object Messages {
   case class DoubleLink(nodeRef: ActorRef, distance : Int)
   case class SingleLink(nodeRef: ActorRef, distance : Int)
@@ -19,6 +21,9 @@ object Messages {
   case object Path
   case object Dist
 }
+
+
+
 
 class Node extends Actor {
   import Messages._
@@ -76,141 +81,214 @@ class Node extends Actor {
 }
 
 
+
+
 object GraphSystem extends App {
   import Messages._
   implicit val to = Timeout(10 seconds)
-  
-  // Creating the Graph [nodeId, listOfConnections:[(nodeId -> weight)]]
-  var Graph:Map[String, Map[String, Int]] = Map()
-  Graph += ("A"-> Map("B"->2, "C"->4))
-  Graph += ("B"-> Map("A"->2, "C"->1, "D"->4, "E"->2))
-  Graph += ("C"-> Map("A"->4, "B"->1, "E"->3))
-  Graph += ("D"-> Map("B"->4, "E"->3, "F"->2))
-  Graph += ("E"-> Map("B"->2, "C"->3, "D"->3, "F"->2))
-  Graph += ("F"-> Map("D"->2, "E"->4))
+  val as = ActorSystem("Graph")
+
+
+
+
+  def Dijkstra(N : Int, C : Int, Graph : Map[Int, Map[Int, Int]], R : Map[Int, (Int, Int, List[Int])]) : Map[Int, (Int, Int, List[Int])] ={
+    var Current = C
+    var queue : Map[Int, Int] = Map()
+    var counter = 0
+    var Result = R
+    while(counter != 6)
+    {
+      for ((k,v) <- Graph(Current)) 
+      {
+        if(Result(k)._1 == 0)
+        {
+          if (Result(k)._2 > (v + Result(Current)._2))
+          {
+            Result = Result - k
+            var distance : Int = v + Result(Current)._2
+            var path : List[Int]= Result(Current)._3 ++ List(Current)
+            Result += (k -> (0, distance , path))
+          }
+          if (queue.contains(k))
+          {
+            queue = queue - k
+          }
+          queue += (k-> Result(k)._2)
+        }
+      }
+      var tmp = Result(Current)
+      Result = Result - Current
+      Result += (Current -> (1, tmp._2, tmp._3))
+      if (queue.contains(Current))
+      {
+        queue = queue - Current
+      }
+      if (! queue.isEmpty)
+      {
+        Current = queue.toSeq.sortBy(_._2).head._1
+      }
+      counter += 1
+    }
+    return (Result)
+  }
+
+
+
+
+
+
+  // Creating a random graph Graph [nodeId, listOfConnections:[(nodeId -> weight)]]
+  val rand = new scala.util.Random
+  var N = 10
+  var randGraph : Map[Int, Map[Int, Int]] = Map()
+  var Result1:Map[Int, (Int, Int, List[Int])] = Map()
+  var ActorNodes = List[ActorRef]()
+  for (i <- 1 to N)
+  {
+    var edges : Map[Int, Int] = Map()
+    var uniqRand = scala.util.Random.shuffle(1 to N)
+    for (j <- 1 to (1 + rand.nextInt(N)))
+    {
+      if (i != j) edges += (j->rand.nextInt(100))
+    }
+    randGraph += (i-> edges)
+    if (i == 1)
+    {
+      Result1 += (i-> (0,0,List()))
+    }
+    else
+    {
+      Result1 += (i -> (0,10000,List()))
+    }
+    ActorNodes = ActorNodes :+ as.actorOf(Props[Node], ("0" + i.toString))
+  }
+
+  //Creating the same graph with actors
+  for ((k,v) <- randGraph)
+  {
+    for ((kk,vv) <- v)
+    {
+      var future = ActorNodes(k-1) ? SingleLink(ActorNodes(kk-1), vv)
+      r = Await.result(future, 1 second)
+      if (r != Success)
+        println("ERROR")
+    }
+  }
+
+
+
+
+
+  Result1 = Dijkstra(N, 1, randGraph, Result1)
+
+  ActorNodes(0) ! Start
+  Thread.sleep(100)
+
+  for (i <- 1 to 10)
+  {
+    var future = (ActorNodes(i-1) ?  Dist)
+    var r = Await.result(future, 1 second)
+    assert(r == Result1(i)._2)
+  }
+
+
+
+
+
+  // Tring with a specific example
+
+  var Graph:Map[Int, Map[Int, Int]] = Map()
+  Graph += (1-> Map(2->2, 3->4))
+  Graph += (2-> Map(1->2, 3->1, 4->4, 5->2))
+  Graph += (3-> Map(1->4, 2->1, 5->3))
+  Graph += (4-> Map(2->4, 5->3, 6->2))
+  Graph += (5-> Map(2->2, 3->3, 4->3, 6->2))
+  Graph += (6-> Map(4->2, 5->4))
 
   // Creating the result variable [nodeId, (isvisited, distance, path)]
-  var Result:Map[String, (Int, Int, List[String])] = Map()
-  Result += ("A"-> (0,0,List()))
-  Result += ("B"-> (0,10000,List()))
-  Result += ("C"-> (0,10000,List()))
-  Result += ("D"-> (0,10000,List()))
-  Result += ("E"-> (0,10000,List()))
-  Result += ("F"-> (0,10000,List()))
+  var Result:Map[Int, (Int, Int, List[Int])] = Map()
+  Result += (1-> (0,0,List()))
+  Result += (2-> (0,10000,List()))
+  Result += (3-> (0,10000,List()))
+  Result += (4-> (0,10000,List()))
+  Result += (5-> (0,10000,List()))
+  Result += (6-> (0,10000,List()))
 
 
-  val as = ActorSystem("Graph")
   // Creating the Same Graph nodes
-  val NodeA = as.actorOf(Props[Node], "A")
-  val NodeB = as.actorOf(Props[Node], "B")
-  val NodeC = as.actorOf(Props[Node], "C")
-  val NodeD = as.actorOf(Props[Node], "D")
-  val NodeE = as.actorOf(Props[Node], "E")
-  val NodeF = as.actorOf(Props[Node], "F")
+  val Node1 = as.actorOf(Props[Node], "1")
+  val Node2 = as.actorOf(Props[Node], "2")
+  val Node3 = as.actorOf(Props[Node], "3")
+  val Node4 = as.actorOf(Props[Node], "4")
+  val Node5 = as.actorOf(Props[Node], "5")
+  val Node6 = as.actorOf(Props[Node], "6")
 
   // Creating the Same edges
-  var future = (NodeA ? DoubleLink(NodeB, 2 ))
+  var future = (Node1 ? DoubleLink(Node2, 2 ))
   var r = Await.result(future, 1 second)
   if (r == Success)
-    println("NodeA --2-- NodeB")
-  future = (NodeA ? DoubleLink(NodeC, 4))
+    println("Node1 --2-- Node2")
+  future = (Node1 ? DoubleLink(Node3, 4))
   r = Await.result(future, 1 second)
   if (r == Success)
-    println("NodeA --4-- NodeC")
-  future = (NodeB ? DoubleLink(NodeC, 1))
+    println("Node1 --4-- Node3")
+  future = (Node2 ? DoubleLink(Node3, 1))
   r = Await.result(future, 1 second)
   if (r == Success)
-    println("NodeB --1-- NodeC")
-  future = (NodeB ? DoubleLink(NodeD, 4))
+    println("Node2 --1-- Node3")
+  future = (Node2 ? DoubleLink(Node4, 4))
   r = Await.result(future, 1 second)
   if (r == Success)
-    println("NodeB --4-- NodeD")
-  future = (NodeB ? DoubleLink(NodeE, 2))
+    println("Node2 --4-- NodeD")
+  future = (Node2 ? DoubleLink(Node5, 2))
   r = Await.result(future, 1 second)
   if (r == Success)
-    println("NodeB --2-- NodeE")
-  future = (NodeC ? DoubleLink(NodeE, 3))
+    println("Node2 --2-- Node5")
+  future = (Node3 ? DoubleLink(Node5, 3))
   r = Await.result(future, 1 second)
   if (r == Success)
-    println("NodeC --3-- NodeE")
-  future = (NodeD ? DoubleLink(NodeE, 3))
+    println("Node3 --3-- Node5")
+  future = (Node4 ? DoubleLink(Node5, 3))
   r = Await.result(future, 1 second)
   if (r == Success)
-    println("NodeD --3-- NodeE")
-  future = (NodeD ? DoubleLink(NodeF, 2))
+    println("Node4 --3-- Node5")
+  future = (Node4 ? DoubleLink(Node6, 2))
   r = Await.result(future, 1 second)
   if (r == Success)
-    println("NodeD --2-- NodeF")
-  future = (NodeE ? DoubleLink(NodeF, 2))
+    println("Node4 --2-- Node6")
+  future = (Node5 ? DoubleLink(Node6, 2))
   r = Await.result(future, 1 second)
   if (r == Success)
-    println("NodeE --2-- NodeF")
+    println("Node5 --2-- Node6")
   
   //Dijkstra sequential
-  var Current = "A"
-  var queue : Map[String, Int] = Map()
-  var counter = 0
-  while(counter != 6)
-  {
-    for ((k,v) <- Graph(Current)) 
-    {
-      if(Result(k)._1 == 0)
-      {
-        if (Result(k)._2 > (v + Result(Current)._2))
-        {
-          Result = Result - k
-          var distance : Int = v + Result(Current)._2
-          var path : List[String]= Result(Current)._3 ++ List(Current)
-          Result += (k -> (0, distance , path))
-        }
-        if (queue.contains(k))
-        {
-          queue = queue - k
-        }
-        queue += (k-> Result(k)._2)
-      }
-    }
-    var tmp = Result(Current)
-    Result = Result - Current
-    Result += (Current -> (1, tmp._2, tmp._3))
-    if (queue.contains(Current))
-    {
-      queue = queue - Current
-    }
-    if (! queue.isEmpty)
-    {
-      Current = queue.toSeq.sortBy(_._2).head._1
-    }
-    counter += 1
-  }
+  Result = Dijkstra(6, 1, Graph, Result)
 
   
   //Dijkstra with Actors
-  NodeA ! Start
-  Thread.sleep(1000)
-  NodeF ! Path
-  NodeF ! Dist
-
-
+  Node1 ! Start
+  Thread.sleep(100)
+  //Node6 ! Path
+  //Node6 ! Dist
 
 
   //assert
-  future = (NodeA ?  Dist)
+  future = (Node1 ?  Dist)
   r = Await.result(future, 1 second)
-  assert(r == Result("A")._2)
-  future = (NodeB ?  Dist)
+  assert(r == Result(1)._2)
+  future = (Node2 ?  Dist)
   r = Await.result(future, 1 second)
-  assert(r == Result("B")._2)
-  future = (NodeC ?  Dist)
+  assert(r == Result(2)._2)
+  future = (Node3 ?  Dist)
   r = Await.result(future, 1 second)
-  assert(r == Result("C")._2)
-  future = (NodeD ?  Dist)
+  assert(r == Result(3)._2)
+  future = (Node4 ?  Dist)
   r = Await.result(future, 1 second)
-  assert(r == Result("D")._2)
-  future = (NodeE ?  Dist)
+  assert(r == Result(4)._2)
+  future = (Node5 ?  Dist)
   r = Await.result(future, 1 second)
-  assert(r == Result("E")._2)
-  future = (NodeF ?  Dist)
+  assert(r == Result(5)._2)
+  future = (Node6 ?  Dist)
   r = Await.result(future, 1 second)
-  assert(r == Result("F")._2)
+  assert(r == Result(6)._2)
 }
