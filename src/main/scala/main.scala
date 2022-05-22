@@ -38,10 +38,12 @@ class Node extends Actor {
   override def receive : Receive = {
     case DoubleLink(nodeRef: ActorRef, distance : Int) =>
       edge = edge + (nodeRef -> distance)
+      context.watch(nodeRef)
       var future = (nodeRef ? SingleLink(self, distance))
       var r = Await.result(future, 1 second)
       sender ! r
     case SingleLink(nodeRef: ActorRef, distance : Int) =>
+      context.watch(nodeRef)
       edge = edge + (nodeRef -> distance)
       sender ! Success
     case Start =>
@@ -77,6 +79,7 @@ class Node extends Actor {
       println("The distance of the shortest path is : " + dist)
     case Dist =>
       sender ! dist
+    case Terminated(ar) => println("The Service actor has been termianted")
   }
 }
 
@@ -90,7 +93,7 @@ object GraphSystem extends App {
 
 
 
-
+  // Dijkstra(number of nodes, current starting point, Graph structure, result structure)
   def Dijkstra(N : Int, C : Int, Graph : Map[Int, Map[Int, Int]], R : Map[Int, (Int, Int, List[Int])]) : Map[Int, (Int, Int, List[Int])] ={
     var Current = C
     var queue : Map[Int, Int] = Map()
